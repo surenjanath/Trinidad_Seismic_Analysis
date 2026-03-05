@@ -15,9 +15,10 @@ import { format, parseISO, isValid } from 'date-fns';
 
 interface SeismicDepthChartProps {
   events: SeismicEvent[];
+  selectedEvent?: SeismicEvent | null;
 }
 
-const SeismicDepthChart: React.FC<SeismicDepthChartProps> = ({ events }) => {
+const SeismicDepthChart: React.FC<SeismicDepthChartProps> = ({ events, selectedEvent }) => {
   const chartData = useMemo(() => {
     return events
       .filter(e => e.depth !== undefined && e.date)
@@ -38,6 +39,23 @@ const SeismicDepthChart: React.FC<SeismicDepthChartProps> = ({ events }) => {
       })
       .filter(Boolean) as any[];
   }, [events]);
+
+  const selectedData = useMemo(() => {
+    if (!selectedEvent || !selectedEvent.date) return [];
+    let dateObj: Date | null = null;
+    try {
+        dateObj = new Date(selectedEvent.date);
+        if (!isValid(dateObj)) return [];
+    } catch {
+        return [];
+    }
+    return [{
+        ...selectedEvent,
+        dateObj: dateObj.getTime(),
+        depth: selectedEvent.depth || 0,
+        magnitude: selectedEvent.magnitude || 0
+    }];
+  }, [selectedEvent]);
 
   if (events.length === 0) return null;
 
@@ -102,6 +120,9 @@ const SeismicDepthChart: React.FC<SeismicDepthChartProps> = ({ events }) => {
                 }}
             />
             <Scatter name="Events" data={chartData} fill="#f97316" fillOpacity={0.6} stroke="#fff" strokeWidth={1} />
+            {selectedData.length > 0 && (
+                <Scatter name="Selected" data={selectedData} fill="#ef4444" stroke="#fff" strokeWidth={2} shape="star" />
+            )}
           </ScatterChart>
         </ResponsiveContainer>
       </div>

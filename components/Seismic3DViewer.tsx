@@ -175,8 +175,44 @@ const Seismic3DScene: React.FC<{ events: SeismicEvent[], setTooltip: (e: any) =>
   );
 };
 
+// ... imports
+
+// ... EventPoint component
+
+// ... Map3D component
+
+// ... Seismic3DScene component
+
 const Seismic3DViewer: React.FC<Props> = ({ events }) => {
   const [tooltip, setTooltip] = useState<{ event: SeismicEvent, x: number, y: number } | null>(null);
+
+  // Calculate Estimated Surface Intensity (Modified Mercalli Intensity - MMI)
+  // This is a simplified attenuation model: I = c1 * M - c2 * log10(Depth) + c3
+  // Generally, shallower earthquakes produce stronger shaking at the epicenter.
+  const calculateIntensity = (mag: number, depth: number) => {
+    // Prevent log(0) or negative depth issues
+    const d = Math.max(depth, 1); 
+    
+    // Gutenberg-Richter / Esteva approximations (simplified for visualization)
+    // Intensity decreases as depth increases.
+    // Base intensity from magnitude
+    let intensity = 1.5 * mag - 0.003 * d - 1.5 * Math.log10(d) + 1.5;
+    
+    // Clamp to 1-10 range (I to X+)
+    return Math.min(Math.max(intensity, 1), 10);
+  };
+
+  const getIntensityLabel = (intensity: number) => {
+    if (intensity < 2) return 'I - Not Felt';
+    if (intensity < 3) return 'II - Weak';
+    if (intensity < 4) return 'III - Weak';
+    if (intensity < 5) return 'IV - Light';
+    if (intensity < 6) return 'V - Moderate';
+    if (intensity < 7) return 'VI - Strong';
+    if (intensity < 8) return 'VII - Very Strong';
+    if (intensity < 9) return 'VIII - Severe';
+    return 'IX+ - Violent';
+  };
 
   return (
     <div className="w-full h-full bg-slate-950 rounded-xl overflow-hidden relative">
@@ -198,13 +234,36 @@ const Seismic3DViewer: React.FC<Props> = ({ events }) => {
       </Canvas>
 
       {tooltip && (
-        <div className="absolute bottom-4 left-4 bg-slate-900/90 backdrop-blur p-3 rounded-lg border border-slate-700 shadow-xl text-xs z-20 pointer-events-none animate-in fade-in slide-in-from-bottom-2">
+        <div className="absolute bottom-4 left-4 bg-slate-900/90 backdrop-blur p-3 rounded-lg border border-slate-700 shadow-xl text-xs z-20 pointer-events-none animate-in fade-in slide-in-from-bottom-2 w-64">
              <div className="font-bold text-slate-200 mb-1">{tooltip.event.location}</div>
-             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                <span className="text-slate-500">Magnitude</span>
-                <span className="font-mono font-bold text-orange-500">M{tooltip.event.magnitude?.toFixed(1)}</span>
-                <span className="text-slate-500">Depth</span>
-                <span className="font-mono font-bold text-blue-400">{tooltip.event.depth} km</span>
+             <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-2">
+                <div>
+                    <span className="text-slate-500 block">Magnitude</span>
+                    <span className="font-mono font-bold text-orange-500">M{tooltip.event.magnitude?.toFixed(1)}</span>
+                </div>
+                <div>
+                    <span className="text-slate-500 block">Depth</span>
+                    <span className="font-mono font-bold text-blue-400">{tooltip.event.depth} km</span>
+                </div>
+             </div>
+             
+             <div className="border-t border-slate-700 pt-2 mt-1">
+                <div className="flex justify-between items-center mb-1">
+                    <span className="text-slate-400">Est. Surface Intensity</span>
+                    <span className="font-bold text-emerald-400">{calculateIntensity(tooltip.event.magnitude || 0, tooltip.event.depth || 0).toFixed(1)}</span>
+                </div>
+                <div className="text-[10px] text-slate-500 italic">
+                    {getIntensityLabel(calculateIntensity(tooltip.event.magnitude || 0, tooltip.event.depth || 0))}
+                </div>
+                <div className="mt-1 h-1 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div 
+                        className="h-full bg-gradient-to-r from-emerald-500 via-yellow-500 to-red-500" 
+                        style={{ width: `${(calculateIntensity(tooltip.event.magnitude || 0, tooltip.event.depth || 0) / 10) * 100}%` }}
+                    />
+                </div>
+                <p className="text-[9px] text-slate-600 mt-1">
+                    *Shallower events generally cause stronger surface shaking than deeper ones of the same magnitude.
+                </p>
              </div>
         </div>
       )}

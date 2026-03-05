@@ -35,7 +35,7 @@ import {
   Box,
   Download
 } from 'lucide-react';
-import { format, subDays, parseISO } from 'date-fns';
+import { format, subDays, parseISO, formatDistanceToNow } from 'date-fns';
 
 const App: React.FC = () => {
   const [events, setEvents] = useState<SeismicEvent[]>([]);
@@ -327,7 +327,7 @@ const App: React.FC = () => {
                   <SeismicTrendChart events={filteredEvents} />
                 </div>
                 <div className="h-80">
-                  <SeismicMagnitudeDist events={filteredEvents} />
+                  <SeismicDepthChart events={filteredEvents} selectedEvent={selectedEvent} />
                 </div>
               </div>
             </div>
@@ -342,44 +342,51 @@ const App: React.FC = () => {
               ) : (
                 <SeismicMap events={filteredEvents} onEventSelect={setSelectedEvent} />
               )}
-              
-              {/* Floating Overlay for Selected Event */}
-              {selectedEvent && (
-                <div className="absolute top-4 right-4 w-80 bg-slate-900/90 backdrop-blur-md border border-slate-700 rounded-lg shadow-2xl p-4 animate-in slide-in-from-right-10">
-                  <div className="flex justify-between items-start mb-4">
+            </div>
+          )}
+          
+          {/* Floating Overlay for Selected Event - Visible across relevant tabs */}
+          {selectedEvent && (activeTab === 'dashboard' || activeTab === 'map' || activeTab === 'analysis') && (
+            <div className="fixed bottom-6 right-6 w-80 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl p-4 animate-in slide-in-from-right-10 z-50">
+              <div className="flex justify-between items-start mb-4">
+                <div>
                     <h3 className="font-display font-bold text-white text-lg leading-tight">{selectedEvent.location}</h3>
-                    <button onClick={() => setSelectedEvent(null)} className="text-slate-500 hover:text-white">
-                      <X size={16} />
-                    </button>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="bg-slate-800/50 p-3 rounded border border-slate-700">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Magnitude</div>
-                      <div className="text-2xl font-mono font-bold text-orange-500">M{selectedEvent.magnitude?.toFixed(1)}</div>
+                    <div className="text-xs text-orange-400 font-mono mt-1">
+                        {selectedEvent.date ? formatDistanceToNow(new Date(selectedEvent.date), { addSuffix: true }) : ''}
                     </div>
-                    <div className="bg-slate-800/50 p-3 rounded border border-slate-700">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Depth</div>
-                      <div className="text-2xl font-mono font-bold text-blue-400">{selectedEvent.depth} <span className="text-sm text-slate-500">km</span></div>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2 text-sm text-slate-400 border-t border-slate-800 pt-3">
-                    <div className="flex justify-between">
-                      <span>Date:</span>
-                      <span className="text-slate-200 font-mono">{selectedEvent.date}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Type:</span>
-                      <span className="text-slate-200 capitalize">{selectedEvent.type === 'eq' ? 'Earthquake' : 'Volcanic'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>ID:</span>
-                      <span className="text-slate-200 font-mono text-xs">{selectedEvent.id}</span>
-                    </div>
-                  </div>
                 </div>
-              )}
+                <button onClick={() => setSelectedEvent(null)} className="text-slate-500 hover:text-white bg-slate-800 p-1 rounded-full">
+                  <X size={16} />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="bg-slate-800/50 p-3 rounded border border-slate-700">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Magnitude</div>
+                  <div className="text-2xl font-mono font-bold text-orange-500">M{selectedEvent.magnitude?.toFixed(1)}</div>
+                </div>
+                <div className="bg-slate-800/50 p-3 rounded border border-slate-700">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Depth</div>
+                  <div className="text-2xl font-mono font-bold text-blue-400">{selectedEvent.depth} <span className="text-sm text-slate-500">km</span></div>
+                </div>
+              </div>
+              
+              <div className="space-y-2 text-sm text-slate-400 border-t border-slate-800 pt-3">
+                <div className="flex justify-between">
+                  <span>Date:</span>
+                  <span className="text-slate-200 font-mono">
+                    {selectedEvent.date ? format(new Date(selectedEvent.date), 'PP p') : '-'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Type:</span>
+                  <span className="text-slate-200 capitalize">{selectedEvent.type === 'eq' ? 'Earthquake' : 'Volcanic'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>ID:</span>
+                  <span className="text-slate-200 font-mono text-xs">{selectedEvent.id}</span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -390,7 +397,7 @@ const App: React.FC = () => {
                   <SeismicTrendChart events={filteredEvents} />
                 </div>
                 <div className="h-96">
-                  <SeismicDepthChart events={filteredEvents} />
+                  <SeismicDepthChart events={filteredEvents} selectedEvent={selectedEvent} />
                 </div>
                 <div className="h-96 lg:col-span-2">
                   <SeismicEnergyChart events={filteredEvents} />
