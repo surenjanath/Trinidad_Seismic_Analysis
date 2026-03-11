@@ -18,6 +18,7 @@ import SeismicHourlyDistribution from './components/SeismicHourlyDistribution';
 import SeismicDepthDistribution from './components/SeismicDepthDistribution';
 import Seismic3DViewer from './components/Seismic3DViewer';
 import SeismicSettings from './components/SeismicSettings';
+import SeismicComparison from './components/SeismicComparison';
 import { 
   Activity, 
   Map as MapIcon, 
@@ -392,6 +393,9 @@ const App: React.FC = () => {
 
           {activeTab === 'analysis' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="h-auto min-h-96">
+                <SeismicComparison events={filteredEvents} />
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="h-96">
                   <SeismicTrendChart events={filteredEvents} />

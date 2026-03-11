@@ -37,70 +37,77 @@ const Map3D = ({ centerLat, centerLon, scale }: { centerLat: number, centerLon: 
     const [geoData, setGeoData] = useState<any>(null);
 
     useEffect(() => {
+        // High-res world map
         fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson')
             .then(response => response.json())
             .then(data => {
-                // Filter for Caribbean and surrounding region
-                const caribbeanCodes = [
-                    "ATG", "BHS", "BRB", "BLZ", "CUB", "DMA", "DOM", "GRD", "GUY", "HTI", 
-                    "JAM", "KNA", "LCA", "VCT", "SUR", "TTO", "PRI", "VIR", "ABW", "CUW", 
-                    "SXM", "BES", "AIA", "CYM", "MSR", "TCA", "VGB", "GLP", "MTQ", "BLM", "MAF",
-                    "VEN", "COL", "PAN", "CRI", "NIC", "HND", "GTM", "MEX", "USA", "SLV"
-                ];
-                
-                const caribbeanNames = [
-                    "Antigua and Barbuda", "Bahamas", "Barbados", "Belize", "Cuba", "Dominica", 
-                    "Dominican Republic", "Grenada", "Guyana", "Haiti", "Jamaica", 
-                    "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", 
-                    "Suriname", "Trinidad and Tobago", "Puerto Rico", "Venezuela", "Colombia", 
-                    "Panama", "Costa Rica", "Nicaragua", "Honduras", "Guatemala", "Mexico", "USA", "El Salvador"
-                ];
-
-                const filteredFeatures = data.features.filter((feature: any) => 
-                    caribbeanCodes.includes(feature.id) || caribbeanNames.includes(feature.properties?.name)
-                );
-                setGeoData({ ...data, features: filteredFeatures });
+                setGeoData(data);
             });
     }, []);
 
-    const lines = useMemo(() => {
-        if (!geoData) return [];
+    const { shapes, lines } = useMemo(() => {
+        if (!geoData) return { shapes: [], lines: [] };
+        const allShapes: THREE.Shape[] = [];
         const allLines: THREE.Vector3[][] = [];
 
+        // We'll render everything, but Three.js frustum culling will help.
+        // To optimize, we could filter by distance to center, but let's try rendering all for a global view.
         geoData.features.forEach((feature: any) => {
             const processPolygon = (coords: any[]) => {
+                const shape = new THREE.Shape();
                 const points: THREE.Vector3[] = [];
-                coords.forEach((coord: any) => {
+                
+                coords.forEach((coord: any, index: number) => {
                     const [lon, lat] = coord;
                     const x = (lon - centerLon) * scale;
-                    const z = -(lat - centerLat) * scale;
-                    points.push(new THREE.Vector3(x, 0.05, z)); // Slightly above 0 to avoid z-fighting with water
+                    const y = (lat - centerLat) * scale; // 2D shape Y maps to 3D Z later
+                    
+                    if (index === 0) {
+                        shape.moveTo(x, y);
+                    } else {
+                        shape.lineTo(x, y);
+                    }
+                    
+                    // For the outline
+                    points.push(new THREE.Vector3(x, 0.21, -y));
                 });
+                allShapes.push(shape);
                 allLines.push(points);
             };
 
-            if (feature.geometry.type === 'Polygon') {
+            if (feature.geometry?.type === 'Polygon') {
                 feature.geometry.coordinates.forEach(processPolygon);
-            } else if (feature.geometry.type === 'MultiPolygon') {
+            } else if (feature.geometry?.type === 'MultiPolygon') {
                 feature.geometry.coordinates.forEach((polygon: any) => {
                     polygon.forEach(processPolygon);
                 });
             }
         });
 
-        return allLines;
+        return { shapes: allShapes, lines: allLines };
     }, [geoData, centerLat, centerLon, scale]);
 
     return (
         <group>
+            {/* 3D Extruded Landmasses */}
+            <group rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+                {shapes.map((shape, i) => (
+                    <mesh key={`shape-${i}`}>
+                        <extrudeGeometry args={[shape, { depth: 0.2, bevelEnabled: false }]} />
+                        <meshStandardMaterial color="#0f172a" roughness={0.8} />
+                    </mesh>
+                ))}
+            </group>
+            
+            {/* Coastline Outlines */}
             {lines.map((points, i) => (
                 <Line 
-                    key={i} 
+                    key={`line-${i}`} 
                     points={points} 
-                    color="#475569" // slate-600
+                    color="#334155" 
                     lineWidth={1} 
                     transparent
-                    opacity={0.6}
+                    opacity={0.8}
                 />
             ))}
         </group>
