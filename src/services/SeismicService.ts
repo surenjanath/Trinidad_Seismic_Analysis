@@ -21,7 +21,15 @@ export const fetchSeismicData = async (): Promise<SeismicEvent[]> => {
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    const data = await response.json();
+    
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error("Failed to parse JSON from API. Response starts with:", text.substring(0, 100));
+      throw new Error("Invalid JSON response from API");
+    }
     
     // Process data to map new format to SeismicEvent interface
     return data.map((event: any, index: number) => {

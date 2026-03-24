@@ -304,7 +304,7 @@ const App: React.FC = () => {
                       INITIALIZING MAP SYSTEM...
                     </div>
                   ) : (
-                    <SeismicMap events={filteredEvents} onEventSelect={setSelectedEvent} />
+                    <SeismicMap events={filteredEvents} onEventSelect={setSelectedEvent} selectedEvent={selectedEvent} />
                   )}
                 </div>
                 
@@ -341,7 +341,7 @@ const App: React.FC = () => {
                   LOADING GEOSPATIAL DATA...
                 </div>
               ) : (
-                <SeismicMap events={filteredEvents} onEventSelect={setSelectedEvent} />
+                <SeismicMap events={filteredEvents} onEventSelect={setSelectedEvent} selectedEvent={selectedEvent} />
               )}
             </div>
           )}

@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Stars, Line, Plane } from '@react-three/drei';
+import { OrbitControls, Stars, Line, Plane, Text } from '@react-three/drei';
 import { SeismicEvent } from '../src/services/SeismicService';
 import * as THREE from 'three';
 
@@ -21,16 +21,110 @@ const EventPoint = ({ event, position, color, size, onHover }: any) => {
   });
 
   return (
-    <mesh
-      ref={mesh}
-      position={position}
-      onPointerOver={(e) => { e.stopPropagation(); setHover(true); onHover(event); }}
-      onPointerOut={() => { setHover(false); onHover(null); }}
-    >
-      <sphereGeometry args={[size, 16, 16]} />
-      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} transparent opacity={0.8} />
-    </mesh>
+    <group position={position}>
+      {/* The actual earthquake hypocenter */}
+      <mesh
+        ref={mesh}
+        onPointerOver={(e) => { e.stopPropagation(); setHover(true); onHover(event); }}
+        onPointerOut={() => { setHover(false); onHover(null); }}
+      >
+        <sphereGeometry args={[size, 16, 16]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.8} transparent opacity={0.9} />
+      </mesh>
+      
+      {/* Line connecting hypocenter to surface epicenter */}
+      <Line 
+        points={[[0, 0, 0], [0, -position[1], 0]]} 
+        color={color} 
+        transparent 
+        opacity={0.3} 
+        lineWidth={1} 
+        dashed 
+        dashSize={0.2} 
+        gapSize={0.1} 
+      />
+      
+      {/* Surface epicenter ring */}
+      <mesh position={[0, -position[1] + 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[size * 1.2, size * 1.2 + 0.05, 16]} />
+        <meshBasicMaterial color={color} transparent opacity={0.6} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Surface Felt Area (Intensity Zone) for significant events */}
+      {(event.magnitude || 0) >= 5 && (
+        <mesh position={[0, -position[1] + 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          {/* Rough approximation: higher magnitude = much larger radius */}
+          <circleGeometry args={[size * Math.pow(1.5, (event.magnitude || 5) - 4), 32]} />
+          <meshBasicMaterial color={color} transparent opacity={0.15} side={THREE.DoubleSide} depthWrite={false} />
+        </mesh>
+      )}
+    </group>
   );
+};
+
+const Plates3D = ({ centerLat, centerLon, scale }: { centerLat: number, centerLon: number, scale: number }) => {
+    const [platesData, setPlatesData] = useState<any>(null);
+
+    useEffect(() => {
+        fetch('https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json')
+            .then(async res => {
+                if (!res.ok) throw new Error('Network response was not ok');
+                const text = await res.text();
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    throw new Error("Invalid JSON response from plates API");
+                }
+            })
+            .then(data => setPlatesData(data))
+            .catch(err => console.error("Failed to fetch plates data:", err));
+    }, []);
+
+    const lines = useMemo(() => {
+        if (!platesData) return [];
+        const allLines: THREE.Vector3[][] = [];
+
+        platesData.features.forEach((feature: any) => {
+            if (feature.geometry?.type === 'LineString') {
+                const points: THREE.Vector3[] = [];
+                feature.geometry.coordinates.forEach((coord: any) => {
+                    const [lon, lat] = coord;
+                    const x = (lon - centerLon) * scale;
+                    const z = -(lat - centerLat) * scale;
+                    points.push(new THREE.Vector3(x, 0.22, z)); // Slightly above landmasses
+                });
+                allLines.push(points);
+            } else if (feature.geometry?.type === 'MultiLineString') {
+                feature.geometry.coordinates.forEach((line: any) => {
+                    const points: THREE.Vector3[] = [];
+                    line.forEach((coord: any) => {
+                        const [lon, lat] = coord;
+                        const x = (lon - centerLon) * scale;
+                        const z = -(lat - centerLat) * scale;
+                        points.push(new THREE.Vector3(x, 0.22, z));
+                    });
+                    allLines.push(points);
+                });
+            }
+        });
+
+        return allLines;
+    }, [platesData, centerLat, centerLon, scale]);
+
+    return (
+        <group>
+            {lines.map((points, i) => (
+                <Line 
+                    key={`plate-${i}`} 
+                    points={points} 
+                    color="#f43f5e" // rose-500
+                    lineWidth={1.5} 
+                    transparent
+                    opacity={0.5}
+                />
+            ))}
+        </group>
+    );
 };
 
 const Map3D = ({ centerLat, centerLon, scale }: { centerLat: number, centerLon: number, scale: number }) => {
@@ -39,10 +133,19 @@ const Map3D = ({ centerLat, centerLon, scale }: { centerLat: number, centerLon: 
     useEffect(() => {
         // High-res world map
         fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson')
-            .then(response => response.json())
+            .then(async res => {
+                if (!res.ok) throw new Error('Network response was not ok');
+                const text = await res.text();
+                try {
+                    return JSON.parse(text);
+                } catch (e) {
+                    throw new Error("Invalid JSON response from world map API");
+                }
+            })
             .then(data => {
                 setGeoData(data);
-            });
+            })
+            .catch(err => console.error("Failed to fetch world map data:", err));
     }, []);
 
     const { shapes, lines } = useMemo(() => {
@@ -155,6 +258,7 @@ const Seismic3DScene: React.FC<{ events: SeismicEvent[], setTooltip: (e: any) =>
     <group>
       {/* Map Layer */}
       <Map3D centerLat={centerLat} centerLon={centerLon} scale={scale} />
+      <Plates3D centerLat={centerLat} centerLon={centerLon} scale={scale} />
 
       {/* Water Surface */}
       <Plane args={[50, 50]} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
@@ -174,9 +278,16 @@ const Seismic3DScene: React.FC<{ events: SeismicEvent[], setTooltip: (e: any) =>
       <gridHelper args={[50, 50, 0x1e293b, 0x0f172a]} position={[0, -0.01, 0]} />
       
       {/* Depth Axis Indicator */}
-      <group position={[10, -5, 10]}>
-         <Line points={[[0, 0, 0], [0, 10, 0]]} color="#334155" lineWidth={1} />
-         {/* Ticks could go here */}
+      <group position={[15, 0, 15]}>
+         <Line points={[[0, 0, 0], [0, -35, 0]]} color="#475569" lineWidth={2} />
+         {[0, 100, 300, 500, 700].map(depth => (
+             <group key={depth} position={[0, -(depth * 0.05), 0]}>
+                 <Line points={[[-0.5, 0, 0], [0.5, 0, 0]]} color="#94a3b8" lineWidth={2} />
+                 <Text position={[1, 0, 0]} color="#cbd5e1" fontSize={0.5} anchorX="left" anchorY="middle">
+                     {depth} km
+                 </Text>
+             </group>
+         ))}
       </group>
     </group>
   );
@@ -230,6 +341,7 @@ const Seismic3DViewer: React.FC<Props> = ({ events }) => {
 
       <Canvas camera={{ position: [0, 10, 15], fov: 45 }}>
         <color attach="background" args={['#020617']} />
+        <fog attach="fog" args={['#020617', 10, 50]} />
         <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
         <ambientLight intensity={0.4} />
         <pointLight position={[10, 20, 10]} intensity={1} />

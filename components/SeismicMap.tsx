@@ -1,10 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, LayersControl, LayerGroup, Circle, useMap, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, LayersControl, LayerGroup, Circle, useMap, Polyline } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { SeismicEvent } from '../src/services/SeismicService';
 import L from 'leaflet';
 
-// ... (existing imports and icon fix)
+interface SeismicMapProps {
+  events: SeismicEvent[];
+  onEventSelect: (event: SeismicEvent) => void;
+  selectedEvent?: SeismicEvent | null;
+}
 
 // Component to handle map bounds updates
 const MapBounds: React.FC<{ events: SeismicEvent[] }> = ({ events }) => {
@@ -20,14 +27,23 @@ const MapBounds: React.FC<{ events: SeismicEvent[] }> = ({ events }) => {
     return null;
 };
 
-const SeismicMap: React.FC<SeismicMapProps> = ({ events, onEventSelect }) => {
+const SeismicMap: React.FC<SeismicMapProps> = ({ events, onEventSelect, selectedEvent }) => {
   const [activeEvent, setActiveEvent] = useState<SeismicEvent | null>(null);
   const [plates, setPlates] = useState<any>(null);
 
   useEffect(() => {
     fetch('https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json')
-      .then(res => res.json())
-      .then(data => setPlates(data));
+      .then(async res => {
+        if (!res.ok) throw new Error('Network response was not ok');
+        const text = await res.text();
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          throw new Error("Invalid JSON response from plates API");
+        }
+      })
+      .then(data => setPlates(data))
+      .catch(err => console.error("Failed to fetch plates data:", err));
   }, []);
 
   // Define color scale for magnitude
@@ -51,8 +67,56 @@ const SeismicMap: React.FC<SeismicMapProps> = ({ events, onEventSelect }) => {
       return Math.pow(2, magnitude) * 1000; 
   };
 
+  const createCustomIcon = (event: SeismicEvent, isSelected: boolean) => {
+    const color = getColor(event.magnitude || 0);
+    const radius = getRadius(event.magnitude || 0);
+    const size = radius * 2;
+    
+    const html = `
+      <div style="
+        width: ${size}px;
+        height: ${size}px;
+        background-color: ${color};
+        border-radius: 50%;
+        border: ${isSelected ? '3px' : '1px'} solid ${isSelected ? '#ffffff' : color};
+        opacity: ${isSelected ? 1 : 0.7};
+        box-shadow: 0 0 4px rgba(0,0,0,0.5);
+      " class="${isSelected ? 'selected-event-marker' : ''}"></div>
+    `;
+
+    return L.divIcon({
+      html,
+      className: 'custom-seismic-marker',
+      iconSize: [size, size],
+      iconAnchor: [radius, radius],
+      popupAnchor: [0, -radius]
+    });
+  };
+
   return (
     <div className="w-full h-full bg-slate-950 rounded-xl overflow-hidden relative z-0">
+      <style>
+        {`
+          @keyframes pulse-marker {
+            0% { stroke-width: 1px; stroke-opacity: 0.5; fill-opacity: 0.7; }
+            50% { stroke-width: 4px; stroke-opacity: 1; fill-opacity: 1; stroke: #ffffff; }
+            100% { stroke-width: 1px; stroke-opacity: 0.5; fill-opacity: 0.7; }
+          }
+          .selected-event-marker {
+            animation: pulse-marker 1.5s infinite ease-in-out;
+            stroke: #ffffff !important;
+            z-index: 1000;
+          }
+          @keyframes pulse-zone {
+            0% { fill-opacity: 0.1; stroke-opacity: 0; stroke-width: 0px; }
+            50% { fill-opacity: 0.25; stroke-opacity: 0.8; stroke-width: 2px; stroke: #ffffff; }
+            100% { fill-opacity: 0.1; stroke-opacity: 0; stroke-width: 0px; }
+          }
+          .selected-intensity-zone {
+            animation: pulse-zone 2s infinite ease-in-out;
+          }
+        `}
+      </style>
       <MapContainer 
         center={[15, -75]} 
         zoom={5} 
@@ -85,18 +149,19 @@ const SeismicMap: React.FC<SeismicMapProps> = ({ events, onEventSelect }) => {
 
             <LayersControl.Overlay checked name="Seismic Events">
                 {/* ... (Events LayerGroup) */}
-                <LayerGroup>
-                    {events.map((event) => (
-                        <CircleMarker
+                <MarkerClusterGroup
+                    chunkedLoading
+                    maxClusterRadius={40}
+                    spiderfyOnMaxZoom={true}
+                    showCoverageOnHover={false}
+                >
+                    {events.map((event) => {
+                        const isSelected = selectedEvent?.id === event.id;
+                        return (
+                        <Marker
                             key={event.id}
-                            center={[event.lat, event.lon]}
-                            radius={getRadius(event.magnitude || 0)}
-                            pathOptions={{
-                                color: getColor(event.magnitude || 0),
-                                fillColor: getColor(event.magnitude || 0),
-                                fillOpacity: 0.7,
-                                weight: 1
-                            }}
+                            position={[event.lat, event.lon]}
+                            icon={createCustomIcon(event, isSelected)}
                             eventHandlers={{
                                 click: () => {
                                     onEventSelect(event);
@@ -145,27 +210,30 @@ const SeismicMap: React.FC<SeismicMapProps> = ({ events, onEventSelect }) => {
                                     </div>
                                 </div>
                             </Popup>
-                        </CircleMarker>
-                    ))}
-                </LayerGroup>
+                        </Marker>
+                    )})}
+                </MarkerClusterGroup>
             </LayersControl.Overlay>
 
-            <LayersControl.Overlay name="Intensity Zones">
+            <LayersControl.Overlay checked name="Intensity Zones">
                 {/* ... (Intensity Zones LayerGroup) */}
                 <LayerGroup>
-                    {events.filter(e => (e.magnitude || 0) >= 4).map((event) => (
+                    {events.filter(e => (e.magnitude || 0) >= 5).map((event) => {
+                        const isSelected = selectedEvent?.id === event.id;
+                        return (
                         <Circle
                             key={`zone-${event.id}`}
                             center={[event.lat, event.lon]}
                             radius={getIntensityRadius(event.magnitude || 0)}
                             pathOptions={{
-                                color: getColor(event.magnitude || 0),
+                                color: isSelected ? '#ffffff' : getColor(event.magnitude || 0),
                                 fillColor: getColor(event.magnitude || 0),
-                                fillOpacity: 0.1,
-                                weight: 0
+                                fillOpacity: isSelected ? 0.25 : 0.1,
+                                weight: isSelected ? 2 : 0,
+                                className: isSelected ? 'selected-intensity-zone' : ''
                             }}
                         />
-                    ))}
+                    )})}
                 </LayerGroup>
             </LayersControl.Overlay>
 
